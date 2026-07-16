@@ -1,0 +1,98 @@
+name: Devcontainer · build & publish
+
+# Builds the prebuilt devcontainer image referenced from
+# `.devcontainer/devcontainer.json` and publishes it to
+# `ghcr.io/beenuar/aisoc-devcontainer`.
+#
+# Why: the prebuilt image is what makes a cold Codespace boot in ~30 s
+# instead of ~5 min. The user-visible KPI sits in
+# `.github/workflows/devcontainer-coldstart.yml`.
+#
+# When this runs:
+#   - On every push to `main` that touches the devcontainer surface.
+#   - On a weekly cron so security-relevant base-layer updates land
+#     even if the surface itself didn't change.
+#   - On manual dispatch (so a release manager can re-tag without
+#     waiting for a commit).
+#
+# Multi-arch: the image is built for `linux/amd64` and `linux/arm64`, so a
+# contributor on an M-series Mac doing local devcontainer work gets a
+# native pull, not a slow QEMU fallback.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.devcontainer/Dockerfile'
+      - '.devcontainer/devcontainer.json'
+      - '.github/workflows/devcontainer-build.yml'
+  # Build (but do not push) on PRs that touch the devcontainer surface, so we
+  # catch Dockerfile breakage before it lands on main. Without this, a typo in
+  # the Dockerfile only fails after merge — which is what happened in #368,
+  # leaving the devcontainer-build workflow red on main until the follow-up
+  # fix shipped. The post-merge push job remains the only thing that publishes
+  # to GHCR.
+  pull_request:
+    branches: [main]
+    paths:
+      - '.devcontainer/Dockerfile'
+      - '.devcontainer/devcontainer.json'
+      - '.github/workflows/devcontainer-build.yml'
+  schedule:
+    - cron: '0 9 * * 1'  # Mondays 09:00 UTC — base image hygiene
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: devcontainer-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build & push (multi-arch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/beenuar/aisoc-devcontainer
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=raw,value=weekly,enable=${{ github.event_name == 'schedule' }}
+
+      - name: Build & push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .devcontainer
+          file: .devcontainer/Dockerfile
+          # Only push when the trigger is on main (push / schedule /
+          # workflow_dispatch). PR builds verify the Dockerfile compiles but
+          # never publish a `:latest` tag from an unmerged change.
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

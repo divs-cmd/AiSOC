@@ -1,0 +1,112 @@
+version: 2
+
+updates:
+  # ── pnpm (web + root workspace) ──────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    groups:
+      next-ecosystem:
+        patterns: ["next", "react", "react-dom", "@types/react*"]
+      radix-ui:
+        patterns: ["@radix-ui/*"]
+      dev-tooling:
+        # NOTE: `eslint*` and `@typescript-eslint/*` deliberately quarantined
+        # below — see the `dev-tooling-eslint` group. ESLint 10 changed the
+        # rule-context API in a way that `eslint-plugin-react@7.37.5`
+        # doesn't support (`TypeError: contextOrFilename.getFilename is not
+        # a function`), so the whole `eslint` family stays out of this group
+        # until `eslint-plugin-react` ships an ESLint-10-compatible release.
+        # Tracking issue: see the open `eslint-plugin-react / ESLint 10`
+        # issue in this repo.
+        patterns: ["typescript", "tailwindcss*", "postcss*"]
+      dev-tooling-eslint:
+        # Quarantined ESLint family. Dependabot still opens these PRs, but
+        # they land separately so a single incompatible plugin can't block
+        # the whole `dev-tooling` group from merging. Remove this group
+        # (and merge it back into `dev-tooling`) once
+        # `eslint-plugin-react` is ESLint-10-compatible.
+        patterns: ["eslint*", "@typescript-eslint/*"]
+    ignore:
+      # Hold `eslint` on v9: ESLint 10 removed the `context.getFilename()`
+      # API that `eslint-plugin-react` (bundled via `eslint-config-next`)
+      # still calls, so `pnpm run lint` crashes with
+      # `TypeError: contextOrFilename.getFilename is not a function`.
+      # Drop this ignore once `eslint-plugin-react` ships an
+      # ESLint-10-compatible release, then bump the family in one pass.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      # Hold `typescript` on v6: TypeScript 7 (the native-port compiler)
+      # fails `apps/web` type-checking (`Web — Lint & Type-check`). Moving
+      # to TS 7 needs a dedicated migration PR with the web types fixed and
+      # the whole toolchain re-verified — not a drive-by dependency bump.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Hold the Storybook family on v9. Storybook requires every
+      # `@storybook/*` package (and `storybook` core) to share one major;
+      # dependabot proposes them piecemeal (e.g. addon-themes 10 while core
+      # is 9), which breaks the Storybook build. Bump the whole stack to 10
+      # in one coordinated migration PR, then drop this ignore.
+      - dependency-name: "storybook"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@storybook/*"
+        update-types: ["version-update:semver-major"]
+
+  # ── pip (api) ────────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /services/api
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+
+  # ── pip (actions) ────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /services/actions
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+
+  # ── pip (agents) ────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /services/agents
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+
+  # ── Go (enrichment) ──────────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /services/enrichment
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+
+  # ── Go (ingest) ──────────────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /services/ingest
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+
+  # ── Go (demo-producer) ───────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /services/demo-producer
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+
+  # ── GitHub Actions ───────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"

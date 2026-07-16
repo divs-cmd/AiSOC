@@ -1,0 +1,77 @@
+name: Security Audit
+
+# Scoped ignores: scripts/security_audit_ignores.txt
+# Local run: python scripts/security_audit.py <pnpm|python|go|validate-ignores>
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  security-audit:
+    name: security-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PNPM_AUDIT_REGISTRY: https://registry.npmjs.org/
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26'
+
+      - name: Install audit tools
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit poetry poetry-plugin-export
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Validate ignore policy
+        run: python scripts/security_audit.py validate-ignores
+
+      - name: Install pnpm dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit pnpm dependencies
+        id: audit-pnpm
+        continue-on-error: true
+        run: python scripts/security_audit.py pnpm
+
+      - name: Audit Python dependencies
+        id: audit-python
+        continue-on-error: true
+        run: python scripts/security_audit.py python
+
+      - name: Audit Go dependencies
+        id: audit-go
+        continue-on-error: true
+        run: python scripts/security_audit.py go
+
+      - name: Enforce staged policy
+        if: >-
+          steps.audit-pnpm.outcome == 'failure' ||
+          steps.audit-python.outcome == 'failure' ||
+          steps.audit-go.outcome == 'failure'
+        run: |
+          echo "::error::High/critical dependency vulnerabilities found — see annotations above"
+          exit 1

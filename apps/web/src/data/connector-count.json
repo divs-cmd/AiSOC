@@ -1,0 +1,15 @@
+{
+  "count": 78,
+  "categories": {
+    "cloud": 14,
+    "edr": 10,
+    "iam": 6,
+    "ndr": 1,
+    "network": 6,
+    "saas": 21,
+    "siem": 17,
+    "vcs": 3
+  },
+  "generatedFrom": "services/connectors/app/connectors/__init__.py",
+  "regenerateWith": "python3 scripts/generate_connector_count.py"
+}
